@@ -9,9 +9,8 @@
 #   LOG_FILE=/tmp/my-log ./swc-shell-split-window.sh
 LOG_FILE="${LOG_FILE:-/tmp/swc-split-log-file}"
 
-# The number of lines of history to show.  Defaults to 5, but you can
-# override from the calling process.
-HISTORY_LINES="${HISTORY_LINES:-5}"
+# What percentage of the window the log pane on the right-hand-side takes up.
+LOG_PANE_PERCENT="${LOG_PANE_PERCENT:-30}"
 
 # Session name.  Defaults to 'swc', but you can override from the
 # calling process.
@@ -25,8 +24,13 @@ SESSION="${SESSION:-swc}"
 # * don't attach yet (-d)
 # * name it $SESSION (-s "${SESSION}")
 # * start reading the log
-# * ignore lines starting with '#' since they are the history file's internal timestamps
-tmux new-session -d -s "${SESSION}" "tail -f '${LOG_FILE}' | grep -v '^#'"
+# * get rid of these errors:
+#   * tail: inotify resources exhausted
+#   * tail: inotify cannot be used, reverting to polling
+# * ignore lines starting with '#' since they are the history file's internal
+#   timestamps
+cmd="tail -f '${LOG_FILE}' 2> /dev/null | grep -v '^#'"
+tmux new-session -d -s "${SESSION}" "${cmd}"
 
 # Get the unique (and permanent) ID for the new window
 WINDOW=$(tmux list-windows -F '#{window_id}' -t "${SESSION}")
@@ -45,33 +49,26 @@ LOG_PID=$(tmux list-panes -F '#{pane_pid}' -t "${WINDOW}")
 # * launch Bash since POSIX doesn't specify shell history or HISTFILE
 #   (bash)
 # * when the Bash process exits, kill the log process
-tmux split-window -v -t "${LOG_PANE}" \
-	"HISTFILE='${LOG_FILE}' HISTCONTROL=ignorespace PROMPT_COMMAND='history -a' bash --norc; kill '${LOG_PID}'"
+cmd="HISTFILE='${LOG_FILE}'"
+cmd="${cmd} HISTCONTROL=ignorespace"
+cmd="${cmd} PROMPT_COMMAND='history -a'"
+cmd="${cmd} bash; kill '${LOG_PID}'"
+tmux split-window -h -t "${LOG_PANE}" "${cmd}"
 
 # Get the unique (and permanent) ID for the shell pane
 SHELL_PANE=$(tmux list-panes -F '#{pane_id}' -t "${WINDOW}" |
 	grep -v "^${LOG_PANE}\$")
 
+# Start in the user's home directory.
 tmux send-keys -t "${SHELL_PANE}" " cd" enter
 
-# Unset all aliases to keep your environment from diverging from the
-# learner's environment.
-tmux send-keys -t "${SHELL_PANE}" " unalias -a" enter
-
-# Set nice prompt displaying
-# with cyan
-# the command number and
-# the '$'.
-tmux send-keys -t "${SHELL_PANE}" " export PS1=\"\[\033[1;36m\]\! $\[\033[0m\] \"" enter
-
-#A prompt showing `user@host:~/directory$ ` can be achieved with:
-#tmux send-keys -t "${SHELL_PANE}" " export PS1=\"\\[\\e]0;\\u@\\h: \\w\\a\\]${debian_chroot:+($debian_chroot)}\\[\\033[01;32m\\]user@host\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]\\$ \"" enter
-
-#Set terminal colours
-if [ ! -z "$BGCOLOR" ]; then
-  tmux select-pane -t "${SHELL_PANE}" -P bg="colour$BGCOLOR"
-  tmux select-pane -t "${LOG_PANE}"   -P bg="colour$BGCOLOR"
-fi
+# If the user's .bashrc defines PROMPT_COMMAND, append 'history -a' to turn on
+# the logging.
+tmux send-keys -t "${SHELL_PANE}" \
+  ' if [[ "${PROMPT_COMMAND}" != "history -a" ]]; then
+      PROMPT_COMMAND="${PROMPT_COMMAND};
+      history -a";
+    fi' enter
 
 sleep 0.1
 
@@ -92,13 +89,14 @@ sleep 0.1
 # history.
 tmux clear-history -t "${SHELL_PANE}"
 
-# Need add an additional line because Bash writes a trailing newline
-# to the log file after each command, tail reads through that trailing
-# newline and flushes everything it read to its pane.
-LOG_PANE_HEIGHT=$((${HISTORY_LINES} + 1))
+# Swap the panes such that the shell pane is on the left and the log pane is
+# on the right.
+tmux swap-pane -s "${LOG_PANE}" -t "${SHELL_PANE}"
 
-# Resize the log window to show the desired number of lines
-tmux resize-pane -t "${LOG_PANE}" -y "${LOG_PANE_HEIGHT}"
+# Resize the log pane such that it (ideally) doesn't take up as much horizontal
+# space.
+tmux resize-pane -t "${LOG_PANE}" \
+  -x "$((${LOG_PANE_PERCENT} * $(tput cols) / 100))"
 
 # Turn off tmux's status bar, because learners won't have one in their
 # terminal.
