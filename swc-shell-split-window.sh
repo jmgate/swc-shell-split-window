@@ -7,7 +7,7 @@
 # but you can override from the calling process.  For example:
 #
 #   LOG_FILE=/tmp/my-log ./swc-shell-split-window.sh
-LOG_FILE="${LOG_FILE:-/tmp/swc-split-log-file}"
+LOG_FILE="${LOG_FILE:-/tmp/${USER}-swc-split-log-file}"
 
 # What percentage of the window the log pane on the right-hand-side takes up.
 LOG_PANE_PERCENT="${LOG_PANE_PERCENT:-30}"
