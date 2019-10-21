@@ -10,7 +10,7 @@
 LOG_FILE="${LOG_FILE:-/tmp/${USER}-swc-split-log-file}"
 
 # What percentage of the window the log pane on the right-hand-side takes up.
-LOG_PANE_PERCENT="${LOG_PANE_PERCENT:-30}"
+LOG_PANE_PERCENT="${LOG_PANE_PERCENT:-25}"
 
 # Session name.  Defaults to 'swc', but you can override from the
 # calling process.
